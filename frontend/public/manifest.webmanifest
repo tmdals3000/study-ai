@@ -1,0 +1,25 @@
+{
+  "name": "Study AI — 나의 학습 공간",
+  "short_name": "Study AI",
+  "description": "PDF 자료, 퀴즈, 카드 복습과 문서 기반 튜터",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f6f8f8",
+  "theme_color": "#0f766e",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

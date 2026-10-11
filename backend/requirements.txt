@@ -1,0 +1,12 @@
+fastapi==0.143.0
+starlette==1.7.0
+uvicorn[standard]==0.34.0
+sqlmodel==0.0.22
+pymupdf==1.25.1
+python-multipart==0.0.32
+fsrs==6.3.2
+httpx==0.28.1
+jsonschema==4.26.0
+python-dotenv==1.2.4
+itsdangerous==2.2.0
+sqlite-vec==0.1.9

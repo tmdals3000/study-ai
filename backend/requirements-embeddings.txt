@@ -1,0 +1,2 @@
+# Optional, installed only by setup-embeddings.ps1.
+sentence-transformers>=3.3,<7
