@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
-import { api, type Doc, type Page, type Summary } from "../api";
+import { api, type Doc, type FigureResult, type Page, type Summary } from "../api";
 import SummaryView from "../components/SummaryView";
 import GenerationPanel from "../components/GenerationPanel";
 import QuizView from "../components/QuizView";
@@ -21,6 +21,8 @@ function DocumentPage({ id }: { id: number }) {
   const [tab, setTab] = useState<string>(initialTab && TABS.includes(initialTab as typeof TABS[number]) ? initialTab : "원문");
   const [error, setError] = useState("");
   const job = useGeneration<Summary>(id, "summary");
+  const figures = useGeneration<FigureResult>(id, "figures");
+  const [showText, setShowText] = useState(true);
   useEffect(() => {
     let alive = true;
     async function load() {
@@ -33,6 +35,10 @@ function DocumentPage({ id }: { id: number }) {
     const timer = setInterval(() => { if (doc?.status === "processing") void load(); }, 2000);
     return () => { alive = false; clearInterval(timer); };
   }, [id, doc?.status]);
+  // 그림 판독이 끝나면 페이지(판독 결과 포함)를 다시 불러온다
+  useEffect(() => {
+    if (figures.generation?.status === "done") api.getPages(id).then(setPages).catch(() => {});
+  }, [id, figures.generation?.id, figures.generation?.status]);
   function changeTab(next: string) { setTab(next); setParams({ tab: next, page: String(current) }, { replace: true }); }
   function jumpTo(n: number) { setCurrent(n); setTab("원문"); setParams({ tab: "원문", page: String(n) }, { replace: true }); window.scrollTo({ top: 0, behavior: "smooth" }); }
   if (!doc) return <div className="panel">{error ? <p className="error">{error}</p> : <p className="muted">자료를 불러오는 중…</p>}<Link to="/" className="text-link mt-4 inline-block">자료실로 돌아가기</Link></div>;
@@ -47,7 +53,17 @@ function DocumentPage({ id }: { id: number }) {
     </nav>
     {tab === "원문" && <section className="space-y-4">
       <div className="flex flex-wrap items-center gap-3"><button className="btn-secondary" aria-label="이전 페이지" disabled={current <= 1} onClick={() => setCurrent(current - 1)}>←</button><label className="flex items-center gap-2 text-sm"><span className="sr-only">페이지 번호</span><input className="field w-20 text-center" type="number" min={1} max={doc.pages || 1} value={current} onChange={e => setCurrent(Math.max(1, Math.min(Number(e.target.value) || 1, doc.pages || 1)))} /><span>/ {doc.pages}페이지</span></label><button className="btn-secondary" aria-label="다음 페이지" disabled={current >= doc.pages} onClick={() => setCurrent(current + 1)}>→</button></div>
-      <article className="panel min-h-80 whitespace-pre-wrap text-sm leading-8">{page?.text.trim() || <span className="muted">추출된 텍스트가 없습니다. 이미지로 된 PDF라면 OCR 설정 후 다시 처리해 주세요.</span>}</article>
+      {doc.status === "ready" && <img key={current} src={`/api/documents/${id}/pages/${current}/image`} alt={`${current}페이지 원본`} loading="lazy" className="w-full rounded-2xl border border-slate-200 bg-white" />}
+      {page?.figure_text && <div className="panel border-amber-200 bg-amber-50/40">
+        <p className="text-sm font-semibold text-amber-900">그림에서 읽은 내용</p>
+        <p className="mt-1 text-xs text-amber-800">AI가 이 페이지의 그림을 읽고, 이미지와 다시 대조해 확인된 항목만 남겼습니다. 위 원본과 비교해 확인할 수 있어요.</p>
+        <p className="mt-3 whitespace-pre-wrap text-sm leading-7">{page.figure_text}</p>
+      </div>}
+      <button className="text-link" onClick={() => setShowText(v => !v)}>{showText ? "추출된 텍스트 숨기기" : "추출된 텍스트 보기"}</button>
+      {showText && <article className="panel min-h-40 whitespace-pre-wrap text-sm leading-8">{page?.text.trim() || <span className="muted">추출된 텍스트가 없습니다. 이미지로 된 PDF라면 OCR 설정 후 다시 처리해 주세요.</span>}</article>}
+      {doc.status === "ready" && <GenerationPanel {...figures} title="그림 내용 읽기"
+        onStart={() => void figures.start({ force: figures.generation?.status === "done" })} onCancel={() => void figures.cancel()} />}
+      {figures.generation?.data && <p className="muted">그림이 있는 {figures.generation.data.pages}페이지를 확인해 {figures.generation.data.pages_with_figures}페이지에서 내용을 읽었습니다 · 판독 {figures.generation.data.generated}개 중 이미지 대조를 통과한 {figures.generation.data.kept}개만 저장. 이후 생성하는 요약·퀴즈·카드·튜터가 이 내용을 근거로 사용합니다.</p>}
     </section>}
     {(tab === "요약" || tab === "마인드맵") && <div className="space-y-5">
       <GenerationPanel {...job} title="요약과 마인드맵" onStart={() => void job.start({ force: job.generation?.status === "done" })} onCancel={() => void job.cancel()} />

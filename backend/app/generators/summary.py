@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 from .. import llm
 from ..config import MAX_SECTION_CHARS, MODEL_GENERATE
 from ..db import engine
-from ..grounding import match_evidence, normalize
+from ..grounding import match_evidence, normalize, page_source
 from ..jobs import checkpoint, update_job
 from ..models import Document, Generation, Page
 from ..prompts import load_prompt
@@ -141,7 +141,7 @@ def run_summary(job_id):
         if not doc:
             return
         title = doc.title
-        pages = [(p.page_no, p.text) for p in session.exec(select(Page).where(Page.doc_id == job.doc_id).order_by(Page.page_no)).all() if p.text.strip()]
+        pages = [(p.page_no, page_source(p.text, p.figure_text)) for p in session.exec(select(Page).where(Page.doc_id == job.doc_id).order_by(Page.page_no)).all() if p.text.strip() or p.figure_text]
     if not pages:
         raise ValueError("추출된 텍스트가 없습니다. 스캔본은 OCR 설정 후 다시 처리해 주세요.")
     sections, stats = [], {"generated": 0, "no_evidence": 0, "unsupported": 0, "corrected": 0}

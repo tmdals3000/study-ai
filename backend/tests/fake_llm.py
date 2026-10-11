@@ -2,10 +2,12 @@
 import re
 TEXT = "Water freezes at zero degrees Celsius. The Earth orbits the Sun."
 EVIDENCE = [{"page": 1, "quote": "Water freezes at zero degrees Celsius."}]
-def respond(prompt, system, schema, model, timeout):
+def respond(prompt, system, schema, model, timeout, images=None):
     props = schema.get("properties", {}) if schema else {}
     if not schema:
         return "Connected."
+    if "figures" in props:
+        return {"figures": [{"caption": "Phase diagram", "texts": ["Ice", "Liquid water"], "structure": ["Ice → Liquid water arrow"]}]}
     if "points" in props:
         return {"title": "Water", "points": [{"heading": "Freezing point", "kind": "정의", "content": "Water freezes at zero degrees Celsius.", "evidence": EVIDENCE}]}
     if "one_line" in props:

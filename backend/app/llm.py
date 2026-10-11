@@ -1,4 +1,5 @@
 """Provider boundary. Schema validation and global concurrency apply to every caller."""
+import base64
 import json
 import os
 import shutil
@@ -22,11 +23,22 @@ def _subscription_env():
     env.pop("ANTHROPIC_AUTH_TOKEN", None)
     return env
 
-def _claude_cli(prompt, system, schema, model, timeout):
+def _image_blocks(images):
+    return [{"type": "image", "source": {"type": "base64", "media_type": "image/png",
+             "data": base64.b64encode(image).decode("ascii")}} for image in images or []]
+
+def _claude_cli(prompt, system, schema, model, timeout, images=None):
     exe = shutil.which("claude")
     if not exe:
         raise LLMError("Claude Code가 없습니다. 설치·로그인하거나 .env에서 다른 LLM을 선택하세요.")
-    args = [exe, "-p", "--output-format", "json", "--model", model, "--tools", "", "--strict-mcp-config", "--no-session-persistence"]
+    args = [exe, "-p", "--model", model, "--tools", "", "--strict-mcp-config", "--no-session-persistence"]
+    if images:
+        # 이미지는 stream-json 입력(이미지 블록이 든 user 메시지 한 줄)으로만 넘길 수 있다
+        args += ["--input-format", "stream-json", "--output-format", "stream-json", "--verbose"]
+        prompt = json.dumps({"type": "user", "message": {"role": "user",
+            "content": _image_blocks(images) + [{"type": "text", "text": prompt}]}}) + "\n"
+    else:
+        args += ["--output-format", "json"]
     if system:
         args += ["--system-prompt", system]
     if schema:
@@ -47,7 +59,13 @@ def _claude_cli(prompt, system, schema, model, timeout):
                 first = False
         if proc.returncode:
             raise LLMError((stderr or stdout or "Claude 실행 실패").strip()[:1000])
-        result = json.loads(stdout)
+        if images:
+            events = [json.loads(line) for line in stdout.splitlines() if line.strip()]
+            result = next((e for e in reversed(events) if e.get("type") == "result"), None)
+            if result is None:
+                raise LLMError("Claude 응답에서 결과를 찾지 못했습니다.")
+        else:
+            result = json.loads(stdout)
         if result.get("is_error"):
             raise LLMError(str(result.get("result", "Claude 실행 실패"))[:1000])
         return result.get("structured_output") if schema else result.get("result", "")
@@ -67,11 +85,11 @@ def _api_schema(value):
         result["additionalProperties"] = False
     return result
 
-def _api(prompt, system, schema, model, timeout):
+def _api(prompt, system, schema, model, timeout, images=None):
     key = os.getenv("ANTHROPIC_API_KEY", "")
     if not key:
         raise LLMError(".env에 ANTHROPIC_API_KEY를 설정하세요.")
-    body = {"model": model, "max_tokens": 16000, "messages": [{"role": "user", "content": prompt}]}
+    body = {"model": model, "max_tokens": 16000, "messages": [{"role": "user", "content": _image_blocks(images) + [{"type": "text", "text": prompt}] if images else prompt}]}
     if system:
         body["system"] = [{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}]
     if schema:
@@ -87,8 +105,11 @@ def _api(prompt, system, schema, model, timeout):
     text = "".join(x.get("text", "") for x in data.get("content", []) if x.get("type") == "text")
     return json.loads(text) if schema else text
 
-def _ollama(prompt, system, schema, model, timeout):
-    messages = ([{"role": "system", "content": system}] if system else []) + [{"role": "user", "content": prompt}]
+def _ollama(prompt, system, schema, model, timeout, images=None):
+    user = {"role": "user", "content": prompt}
+    if images:
+        user["images"] = [base64.b64encode(image).decode("ascii") for image in images]
+    messages = ([{"role": "system", "content": system}] if system else []) + [user]
     body = {"model": model, "messages": messages, "stream": False}
     if schema:
         body["format"] = schema
@@ -100,7 +121,9 @@ def _ollama(prompt, system, schema, model, timeout):
     return json.loads(text) if schema else text
 
 def generate(prompt: str, *, system: str | None = None, schema: dict | None = None,
-             model: str = LLM_DEFAULT_MODEL, timeout: int = 600, retries: int = 1) -> Any:
+             model: str = LLM_DEFAULT_MODEL, timeout: int = 600, retries: int = 1,
+             images: list[bytes] | None = None) -> Any:
+    """images: PNG 바이트 목록. 주면 모델이 이미지와 함께 prompt를 본다."""
     provider = {"claude_cli": _claude_cli, "api": _api, "ollama": _ollama}.get(LLM_PROVIDER)
     if provider is None:
         raise LLMError(f"지원하지 않는 LLM_PROVIDER: {LLM_PROVIDER}")
@@ -110,7 +133,7 @@ def generate(prompt: str, *, system: str | None = None, schema: dict | None = No
         for attempt in range(retries + 1):
             checkpoint()
             try:
-                output = provider(prompt, system, schema, model, timeout)
+                output = provider(prompt, system, schema, model, timeout, images)
                 checkpoint()
                 if schema:
                     validate(output, schema)

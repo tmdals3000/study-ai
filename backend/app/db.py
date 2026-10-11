@@ -22,6 +22,8 @@ def init_db() -> None:
         pending = [row[0] for row in conn.execute(text("SELECT id FROM document WHERE status='processing'"))]
         conn.execute(text("PRAGMA journal_mode=WAL"))
         columns = {r[1] for r in conn.execute(text("PRAGMA table_info(generation)"))}
+        if "figure_text" not in {r[1] for r in conn.execute(text("PRAGMA table_info(page)"))}:
+            conn.execute(text("ALTER TABLE page ADD COLUMN figure_text TEXT"))
         if "options" not in columns:
             conn.execute(text("ALTER TABLE generation ADD COLUMN options TEXT NOT NULL DEFAULT '{}'"))
         conn.execute(text("UPDATE generation SET status='error', progress=NULL, error='서버가 재시작되어 중단되었습니다. 다시 생성해 주세요.' WHERE status IN ('running','queued')"))

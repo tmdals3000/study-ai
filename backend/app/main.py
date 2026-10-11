@@ -6,7 +6,7 @@ import sqlite3
 import tempfile
 import uuid
 import zipfile
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -17,8 +17,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func
 from sqlmodel import Session, delete, select, update
 from . import auth, jobs, llm, tutor
-from .config import APP_PASSWORD, COOKIE_SECURE, DATA_DIR, DB_PATH, EMBEDDING_MODEL, MAX_UPLOAD_BYTES, ROOT, UPLOAD_DIR
+from .config import APP_PASSWORD, COOKIE_SECURE, DATA_DIR, DB_PATH, EMBEDDING_MODEL, MAX_UPLOAD_BYTES, PAGE_IMAGE_DIR, ROOT, UPLOAD_DIR
 from .db import engine, get_session, init_db
+from .generators.figures import render_png, run_figures
 from .generators.summary import run_summary
 from .generators.study import run_study, grade_question
 from .ingest import ingest_pdf
@@ -141,6 +142,23 @@ def pages(doc_id: int, session: Session = Depends(get_session)):
     document(session, doc_id)
     return session.exec(select(Page).where(Page.doc_id == doc_id).order_by(Page.page_no)).all()
 
+@app.get("/api/documents/{doc_id}/pages/{page_no}/image")
+def page_image(doc_id: int, page_no: int, session: Session = Depends(get_session)):
+    """원문 탭에 보여줄 페이지 이미지. 처음 요청 때 렌더링해 캐시한다."""
+    doc = document(session, doc_id)
+    if not 1 <= page_no <= doc.pages:
+        raise HTTPException(404, "페이지를 찾을 수 없습니다.")
+    cached = PAGE_IMAGE_DIR / str(doc_id) / f"{page_no}.png"
+    if not cached.is_file():
+        source = UPLOAD_DIR / doc.filename
+        if not source.is_file():
+            raise HTTPException(404, "원본 PDF 파일이 없습니다.")
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        partial = cached.with_suffix(f".{uuid.uuid4().hex}.tmp")
+        partial.write_bytes(render_png(source, page_no))
+        partial.replace(cached)
+    return FileResponse(cached, media_type="image/png", headers={"Cache-Control": "private, max-age=86400"})
+
 @app.get("/api/documents/{doc_id}/file")
 def original(doc_id: int, session: Session = Depends(get_session)):
     doc = document(session, doc_id)
@@ -177,6 +195,7 @@ def remove_document(doc_id: int, session: Session = Depends(get_session)):
         session.delete(doc)
         session.commit()
         (UPLOAD_DIR / filename).unlink(missing_ok=True)
+        shutil.rmtree(PAGE_IMAGE_DIR / str(doc_id), ignore_errors=True)
 
 class GenerateRequest(BaseModel):
     force: bool = False
@@ -205,11 +224,11 @@ def start_generation(doc_id, kind, body, session):
         session.commit()
         session.refresh(job)
         result = jobs.output(job)
-        jobs.submit(job.id, run_summary if kind == "summary" else run_study)
+        jobs.submit(job.id, {"summary": run_summary, "figures": run_figures}.get(kind, run_study))
         return result
 
 @app.post("/api/documents/{doc_id}/generate/{kind}", status_code=202)
-def generate(doc_id: int, kind: Literal["summary", "quiz", "cards"], body: GenerateRequest = GenerateRequest(), session: Session = Depends(get_session)):
+def generate(doc_id: int, kind: Literal["summary", "quiz", "cards", "figures"], body: GenerateRequest = GenerateRequest(), session: Session = Depends(get_session)):
     return start_generation(doc_id, kind, body, session)
 
 @app.get("/api/documents/{doc_id}/summary")
@@ -221,7 +240,7 @@ def summary(doc_id: int, session: Session = Depends(get_session)):
     return generation_output(session, job)
 
 @app.get("/api/documents/{doc_id}/generations/{kind}")
-def generation(doc_id: int, kind: Literal["summary", "quiz", "cards"], session: Session = Depends(get_session)):
+def generation(doc_id: int, kind: Literal["summary", "quiz", "cards", "figures"], session: Session = Depends(get_session)):
     document(session, doc_id)
     job = latest(session, doc_id, kind)
     return generation_output(session, job)
@@ -399,11 +418,11 @@ def backup(background: BackgroundTasks):
     try:
         with jobs.lock:
             snapshot = temporary / "study.db"
-            with sqlite3.connect(DB_PATH) as source, sqlite3.connect(snapshot) as target:
+            with closing(sqlite3.connect(DB_PATH)) as source, closing(sqlite3.connect(snapshot)) as target:  # with만 쓰면 연결이 닫히지 않아 Windows에서 파일이 잠긴다
                 source.backup(target)
             with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as bundle:
                 bundle.write(snapshot, "study.db")
-                with sqlite3.connect(snapshot) as saved:
+                with closing(sqlite3.connect(snapshot)) as saved:
                     filenames = [row[0] for row in saved.execute("SELECT filename FROM document")]
                 for filename in filenames:
                     file = UPLOAD_DIR / Path(filename).name

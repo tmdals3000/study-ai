@@ -9,6 +9,7 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 DB_PATH = DATA_DIR / "study.db"
 PROMPT_DIR = ROOT / "backend" / "prompts"
 LLM_SANDBOX_DIR = DATA_DIR / "llm_sandbox"
+PAGE_IMAGE_DIR = DATA_DIR / "page_images"  # 원문 탭 슬라이드 이미지 캐시 (다시 만들 수 있음)
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "claude_cli")
 LLM_DEFAULT_MODEL = os.getenv("LLM_MODEL", {"claude_cli": "sonnet", "api": "claude-sonnet-5-5", "ollama": "qwen3:8b"}.get(LLM_PROVIDER, "sonnet"))
 MODEL_GENERATE = LLM_DEFAULT_MODEL

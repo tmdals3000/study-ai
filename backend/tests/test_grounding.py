@@ -26,3 +26,16 @@ def test_math_symbols_are_significant():
 
 def test_too_short_quote_is_rejected():
     assert find_quote("한다.", PAGES) is None
+
+
+def test_quote_starting_with_list_bullet_matches():
+    # 회귀: 원문 "\n- 항목"은 하이픈이 지워지고 인용 "- 항목"은 남아 매칭에 실패하던 문제
+    page = {59: "그림: 왓슨을 사용한 의료 진단\n- 환자 데이터\n의사 노트,\n각종 테스트 결과\n- 환자 설문"}
+    assert find_quote("- 환자 데이터\n의사 노트,\n각종 테스트 결과", page) == 59
+    assert find_quote("환자 데이터 의사 노트, 각종 테스트 결과", page) == 59
+    assert find_quote("• 환자 설문 응답 내용", {1: "목록\n• 환자 설문 응답 내용"}) == 1
+
+
+def test_bullet_removal_keeps_negative_numbers():
+    assert find_quote("온도는 -20도이다.", {1: "온도는 20도이다."}) is None
+    assert find_quote("-20도에서 언다", {1: "목록\n20도에서 언다"}) is None

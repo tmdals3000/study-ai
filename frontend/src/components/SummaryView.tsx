@@ -25,6 +25,7 @@ function PointCard({ point, onJump }: { point: Point; onJump: (page: number) => 
               <button onClick={() => onJump(e.page)} className="mr-1 text-indigo-600 hover:underline">
                 p.{e.page}
               </button>
+              {e.figure && <span className="mr-1 rounded bg-amber-100 px-1 text-amber-800" title="AI가 그림에서 읽고 이미지와 대조해 검증한 내용">그림</span>}
               “{e.quote}”
             </li>
           ))}

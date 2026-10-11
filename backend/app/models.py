@@ -15,6 +15,7 @@ class Page(SQLModel, table=True):
     doc_id: int = Field(foreign_key="document.id", index=True)
     page_no: int
     text: str
+    figure_text: str | None = None  # 그림 판독 결과 (검증 통과분만)
 
 class Generation(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)

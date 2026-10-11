@@ -1,6 +1,7 @@
 export type Doc = { id: number; title: string; pages: number; status: "processing" | "ready" | "error"; error: string | null; created_at: string };
-export type Page = { id: number; doc_id: number; page_no: number; text: string };
-export type Evidence = { page: number; quote: string };
+export type Page = { id: number; doc_id: number; page_no: number; text: string; figure_text: string | null };
+// figure: 인용이 원문 텍스트가 아니라 검증된 그림 판독 내용에서 나왔음
+export type Evidence = { page: number; quote: string; figure?: boolean };
 export type Point = { id: string; heading: string; kind: string; content: string; pages: number[]; evidence: Evidence[]; corrected: boolean };
 export type Summary = {
   title: string; one_line: { text: string; pages: number[] } | null;
@@ -12,7 +13,8 @@ export type Summary = {
 };
 export type Generation<T> = { id: number; status: "queued" | "running" | "done" | "error" | "cancelled"; progress: string | null; error: string | null; data: T | null; updated_at: string };
 export type StudyResult = { requested: number; generated: number; kept: number; rejected: number; note: string };
-export type Kind = "summary" | "quiz" | "cards";
+export type Kind = "summary" | "quiz" | "cards" | "figures";
+export type FigureResult = { pages: number; pages_with_figures: number; generated: number; kept: number };
 export type GenerateOptions = { force?: boolean; count?: number; types?: string[]; wrong_only?: boolean };
 export type Question = { id: number; type: "multiple" | "ox" | "short"; question: string; choices: string[]; difficulty: string; concept: string };
 export type Grade = { correct: boolean; feedback: string; answer: string; explanation: string; evidence: Evidence[] };

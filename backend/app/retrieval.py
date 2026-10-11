@@ -8,6 +8,7 @@ from functools import lru_cache
 from sqlmodel import Session, delete, select
 from sqlalchemy import text as sql
 from .config import EMBEDDING_MODEL
+from .grounding import page_source
 from .models import Chunk, Page
 
 _model_lock = threading.Lock()
@@ -66,7 +67,7 @@ def retrieve(session: Session, doc_id: int, query: str, top_k=5) -> list[dict]:
     rows = session.exec(select(Chunk).where(Chunk.doc_id == doc_id).order_by(Chunk.id)).all()
     if not rows:
         pages = session.exec(select(Page).where(Page.doc_id == doc_id).order_by(Page.page_no)).all()
-        index_pages(session, doc_id, [(p.page_no, p.text) for p in pages])
+        index_pages(session, doc_id, [(p.page_no, page_source(p.text, p.figure_text)) for p in pages])
         session.commit()
         rows = session.exec(select(Chunk).where(Chunk.doc_id == doc_id).order_by(Chunk.id)).all()
     if not rows:

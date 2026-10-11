@@ -4,7 +4,7 @@ from sqlmodel import Session, select
 from .. import llm
 from ..config import MODEL_GENERATE, MODEL_VERIFY
 from ..db import engine
-from ..grounding import match_evidence, normalize
+from ..grounding import match_evidence, normalize, page_source
 from ..jobs import checkpoint, lock, update_job, JobStopped
 from ..models import Card, Chunk, Generation, Page, Question
 from ..prompts import load_prompt
@@ -41,7 +41,7 @@ def run_study(job_id):
         pages = session.exec(select(Page).where(Page.doc_id == doc_id).order_by(Page.page_no)).all()
         chunks = session.exec(select(Chunk).where(Chunk.doc_id == doc_id).order_by(Chunk.id)).all()
         if not chunks:
-            index_pages(session, doc_id, [(p.page_no, p.text) for p in pages])
+            index_pages(session, doc_id, [(p.page_no, page_source(p.text, p.figure_text)) for p in pages])
             session.commit()
             chunks = session.exec(select(Chunk).where(Chunk.doc_id == doc_id).order_by(Chunk.id)).all()
     if not chunks:
